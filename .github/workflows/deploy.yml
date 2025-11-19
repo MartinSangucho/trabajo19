@@ -1,6 +1,3 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Python application
 
 on:
@@ -13,56 +10,69 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    
+    # Define la imagen final de Docker Hub/GHCR
+    env:
+      IMAGE_TAG: ghcr.io/martinsangucho/finalquintoa:latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.11"
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.11"
 
-    - name: 🔐 Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      # --- CONSTRUCCIÓN E INICIO DE SESIÓN EN GHCR (OK) ---
 
-    - name: 🏗️ Build and push Docker image
-      uses: docker/build-push-action@v6
-      with:
-        push: true
-        tags: ghcr.io/martinsangucho/finalquintoa:1.0.0
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Mostrar variables basicas (solo locales, no secretos)
-      run: |
-        echo "Host: ${{ secrets.VPS_HOST }}"
-        echo "Usuario: ${{ secrets.VPS_USER }}"
-        echo "Puerto: ${{ secrets.VPS_SSH_PORT }}"
-        echo "Password: ${{ secrets.VPS_PASSWORD }}"
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          # Usamos la variable de entorno para el tag
+          tags: ${{ env.IMAGE_TAG }}
 
-    - name: Probar conexion SSH
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        password: ${{ secrets.VPS_PASSWORD }}
-        port: ${{ secrets.VPS_SSH_PORT }}
-        script: |
-          echo "Conexion exitosa desde GitHub Actionss"
-          hostname
-          whoami
-          ls -la
-          uptime 
+      # --- PASO 1: TRANSFERIR ARCHIVOS (CORREGIDO) ---
 
-    - name: Probar el sanguchp deploy
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        password: ${{ secrets.VPS_PASSWORD }}
-        port: ${{ secrets.VPS_SSH_PORT }}
-        source: ./stack.yml
-        target: "/home/${{ secrets.VPS_USER }}/despliegue"
+      - name: 📁 Transferir archivos esenciales por SCP
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT }}
+          # Corregimos el uso de los parámetros file/remote_host/etc.
+          # Usamos 'source' y 'target' que sí son válidos para la transferencia
+          source: "Dockerfile,app.py,requirements.txt,stack.yml"
+          target: "/home/${{ secrets.VPS_USER }}/despliegue"
+
+      # --- PASO 2: DESPLIEGUE REMOTO SSH (NUEVO) ---
+      # Usamos el script para detener lo viejo y levantar lo nuevo
+      - name: 🚀 Desplegar la nueva versión con Docker Compose
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT }}
+          # Comandos a ejecutar en el servidor remoto
+          script: |
+            echo "Iniciando despliegue en /home/${{ secrets.VPS_USER }}/despliegue"
+            cd /home/${{ secrets.VPS_USER }}/despliegue
+            
+            # Detener contenedores viejos
+            docker compose down || true
+            
+            # Levantar la nueva versión. El 'up --build' no es necesario 
+            # si siempre haces 'docker pull', pero es más seguro si transferiste archivos.
+            docker compose up --build -d 
+            
+            echo "Despliegue finalizado. Verificar en el puerto 8080."
