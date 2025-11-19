@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   sanguchp:
-    image:
+    image: ghcr.io/martinsangucho/finalquintoa:1.0.0
     deploy:
       replicas: 1
       resources:
