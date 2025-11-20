@@ -62,10 +62,18 @@ jobs:
             echo "Iniciando despliegue en /home/${{ secrets.VPS_USER }}/despliegue"
             cd /home/${{ secrets.VPS_USER }}/despliegue
 
-            echo "Deteniendo contenedores viejos..."
-            docker compose down || true
+            # Paso 1: descargar la imagen
+            #echo "==> descargando la imagen del GHCR"
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u byronmoreno --password-stdin
+            docker pull ghcr.io/martinsangucho/finalquintoa:latest
 
-            echo "Levantando nueva versión..."
-            docker compose up --build -d
+            # Paso 2: borrar el stack
+            docker stack rm cristhian || true 
 
-            echo "Despliegue finalizado. Revisar servidor."
+            sleep 30
+
+            # Paso 3: desplegar stack
+            echo "==> Desplegando stack..."
+            docker stack deploy -c stack.yml --with-registry-auth cristhian
+
+            docker ps
