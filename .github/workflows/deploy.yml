@@ -2,7 +2,7 @@ name: Python application
 
 on:
   push:
-    branches: "main"
+    branches: [ "main" ]   # ← Cambiar a "master" si tu repo usa master
 
 permissions:
   contents: read
@@ -11,21 +11,21 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    # Define la imagen final de Docker Hub/GHCR
+
     env:
+      # Imagen final que se subirá a GHCR
       IMAGE_TAG: ghcr.io/martinsangucho/finalquintoa:latest
 
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v3
         with:
           python-version: "3.11"
 
-      # --- CONSTRUCCIÓN E INICIO DE SESIÓN EN GHCR (OK) ---
-
+      # --- LOGIN A GHCR ---
       - name: 🔐 Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -33,15 +33,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # --- BUILD + PUSH DOCKER IMAGE ---
       - name: 🏗️ Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           push: true
-          # Usamos la variable de entorno para el tag
           tags: ${{ env.IMAGE_TAG }}
 
-      # --- PASO 1: TRANSFERIR ARCHIVOS (CORREGIDO) ---
-
+      # --- TRANSFERENCIA DE ARCHIVOS POR SCP (CORREGIDO) ---
       - name: 📁 Transferir archivos esenciales por SCP
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -49,13 +48,14 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_SSH_PORT }}
-          # Corregimos el uso de los parámetros file/remote_host/etc.
-          # Usamos 'source' y 'target' que sí son válidos para la transferencia
-          source: "Dockerfile,app.py,requirements.txt,stack.yml"
+          source: |
+            Dockerfile
+            app.py
+            requirements.txt
+            stack.yml
           target: "/home/${{ secrets.VPS_USER }}/despliegue"
 
-      # --- PASO 2: DESPLIEGUE REMOTO SSH (NUEVO) ---
-      # Usamos el script para detener lo viejo y levantar lo nuevo
+      # --- DESPLIEGUE AUTOMÁTICO EN EL VPS ---
       - name: 🚀 Desplegar la nueva versión con Docker Compose
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -63,16 +63,14 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_SSH_PORT }}
-          # Comandos a ejecutar en el servidor remoto
           script: |
             echo "Iniciando despliegue en /home/${{ secrets.VPS_USER }}/despliegue"
             cd /home/${{ secrets.VPS_USER }}/despliegue
-            
-            # Detener contenedores viejos
+
+            echo "Deteniendo contenedores viejos..."
             docker compose down || true
-            
-            # Levantar la nueva versión. El 'up --build' no es necesario 
-            # si siempre haces 'docker pull', pero es más seguro si transferiste archivos.
-            docker compose up --build -d 
-            
-            echo "Despliegue finalizado. Verificar en el puerto 8080."
+
+            echo "Levantando nueva versión..."
+            docker compose up --build -d
+
+            echo "Despliegue finalizado. Revisar servidor."
