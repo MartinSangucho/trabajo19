@@ -21,7 +21,6 @@ services:
         - "traefik.http.routers.sanguchp-secure.tls.certresolver=http"
         - "traefik.http.routers.sanguchp-secure.service=sanguchp"
         - "traefik.http.services.sanguchp.loadbalancer.server.port=5000"
-        - "traefik.docker.network=traefik-public"
     networks:
       - traefik-public
 
